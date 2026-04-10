@@ -6,7 +6,17 @@ app.use(express.json());
 
 const PORT = 3000;
 
-//
+// ==========================
+// FUNCIÓN CAMPO CALCULADO
+// ==========================
+function calcularCantidadOpciones(opciones) {
+  if (!opciones) return 0;
+  return opciones
+    .split(",")
+    .map(o => o.trim())
+    .filter(o => o !== "").length;
+}
+
 // ==========================
 // VALIDACIÓN
 // ==========================
@@ -51,14 +61,14 @@ app.post("/preguntas", (req, res) => {
         id: this.lastID,
         pregunta,
         tipo,
-        opciones: tipo === "multiple" ? opciones : null
+        opciones
       });
     }
   );
 });
 
 // ==========================
-// GET /preguntas
+// GET /preguntas (CON CAMPO CALCULADO)
 // ==========================
 app.get("/preguntas", (req, res) => {
   const { tipo } = req.query;
@@ -73,12 +83,18 @@ app.get("/preguntas", (req, res) => {
 
   db.all(query, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
+
+    const resultado = rows.map(p => ({
+      ...p,
+      cantidad_opciones: calcularCantidadOpciones(p.opciones)
+    }));
+
+    res.json(resultado);
   });
 });
 
 // ==========================
-// GET /preguntas/:id
+// GET /preguntas/:id (CON CAMPO CALCULADO)
 // ==========================
 app.get("/preguntas/:id", (req, res) => {
   db.get(
@@ -91,7 +107,12 @@ app.get("/preguntas/:id", (req, res) => {
         return res.status(404).json({ mensaje: "Pregunta no encontrada" });
       }
 
-      res.json(row);
+      const resultado = {
+        ...row,
+        cantidad_opciones: calcularCantidadOpciones(row.opciones)
+      };
+
+      res.json(resultado);
     }
   );
 });
@@ -121,7 +142,7 @@ app.put("/preguntas/:id", (req, res) => {
         id: req.params.id,
         pregunta,
         tipo,
-        opciones: tipo === "multiple" ? opciones : null
+        opciones
       });
     }
   );
