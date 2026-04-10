@@ -1,13 +1,10 @@
 const express = require("express");
 const app = express();
+const db = require("./db/database");
 
 app.use(express.json());
 
-// ==========================
-// "BASE DE DATOS" EN MEMORIA
-// ==========================
-let preguntas = [];
-let idActual = 1;
+const PORT = 3000;
 
 // ==========================
 // VALIDACIÓN
@@ -43,89 +40,114 @@ app.post("/preguntas", (req, res) => {
 
   const { pregunta, tipo, opciones } = req.body;
 
-  const nuevaPregunta = {
-    id: idActual++,
-    pregunta,
-    tipo,
-    opciones: tipo === "multiple" ? opciones : null
-  };
+  db.run(
+    `INSERT INTO preguntas (pregunta, tipo, opciones) VALUES (?, ?, ?)`,
+    [pregunta, tipo, tipo === "multiple" ? opciones : null],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
 
-  preguntas.push(nuevaPregunta);
-
-  res.status(201).json(nuevaPregunta);
+      res.status(201).json({
+        id: this.lastID,
+        pregunta,
+        tipo,
+        opciones: tipo === "multiple" ? opciones : null
+      });
+    }
+  );
 });
 
 // ==========================
-// GET /preguntas (con filtro)
+// GET /preguntas
 // ==========================
 app.get("/preguntas", (req, res) => {
   const { tipo } = req.query;
 
+  let query = "SELECT * FROM preguntas";
+  let params = [];
+
   if (tipo) {
-    const filtradas = preguntas.filter(p => p.tipo === tipo);
-    return res.json(filtradas);
+    query += " WHERE tipo = ?";
+    params.push(tipo);
   }
 
-  res.json(preguntas);
+  db.all(query, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
 });
 
 // ==========================
 // GET /preguntas/:id
 // ==========================
 app.get("/preguntas/:id", (req, res) => {
-  const pregunta = preguntas.find(p => p.id === parseInt(req.params.id));
+  db.get(
+    "SELECT * FROM preguntas WHERE id = ?",
+    [req.params.id],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
 
-  if (!pregunta) {
-    return res.status(404).json({ mensaje: "Pregunta no encontrada" });
-  }
+      if (!row) {
+        return res.status(404).json({ mensaje: "Pregunta no encontrada" });
+      }
 
-  res.json(pregunta);
+      res.json(row);
+    }
+  );
 });
 
 // ==========================
 // PUT /preguntas/:id
 // ==========================
 app.put("/preguntas/:id", (req, res) => {
-  const index = preguntas.findIndex(p => p.id === parseInt(req.params.id));
-
-  if (index === -1) {
-    return res.status(404).json({ mensaje: "Pregunta no encontrada" });
-  }
-
   const error = validarPregunta(req.body);
   if (error) return res.status(400).json({ error });
 
   const { pregunta, tipo, opciones } = req.body;
 
-  preguntas[index] = {
-    id: preguntas[index].id,
-    pregunta,
-    tipo,
-    opciones: tipo === "multiple" ? opciones : null
-  };
+  db.run(
+    `UPDATE preguntas 
+     SET pregunta = ?, tipo = ?, opciones = ?
+     WHERE id = ?`,
+    [pregunta, tipo, tipo === "multiple" ? opciones : null, req.params.id],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
 
-  res.json(preguntas[index]);
+      if (this.changes === 0) {
+        return res.status(404).json({ mensaje: "Pregunta no encontrada" });
+      }
+
+      res.json({
+        id: req.params.id,
+        pregunta,
+        tipo,
+        opciones: tipo === "multiple" ? opciones : null
+      });
+    }
+  );
 });
 
 // ==========================
 // DELETE /preguntas/:id
 // ==========================
 app.delete("/preguntas/:id", (req, res) => {
-  const index = preguntas.findIndex(p => p.id === parseInt(req.params.id));
+  db.run(
+    "DELETE FROM preguntas WHERE id = ?",
+    [req.params.id],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
 
-  if (index === -1) {
-    return res.status(404).json({ mensaje: "Pregunta no encontrada" });
-  }
+      if (this.changes === 0) {
+        return res.status(404).json({ mensaje: "Pregunta no encontrada" });
+      }
 
-  preguntas.splice(index, 1);
-
-  res.json({ mensaje: "Pregunta eliminada correctamente" });
+      res.json({ mensaje: "Pregunta eliminada correctamente" });
+    }
+  );
 });
 
 // ==========================
 // SERVIDOR
 // ==========================
-const PORT = 3000;
 app.listen(PORT, () => {
   console.log(`API corriendo en http://localhost:${PORT}`);
 });
